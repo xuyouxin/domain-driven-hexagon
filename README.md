@@ -230,8 +230,6 @@ Some CQS purists may say that a `Command` shouldn't return anything at all. But 
 
 Though, violating this rule and returning some metadata, like `ID` of a created item, redirect link, confirmation message, status, or other metadata is a more practical approach than following dogmas.
 
-All changes done by `Commands` (or by events or anything else) across multiple aggregates should be saved in a single database transaction (if you are using a single database). This means that inside a single process, one command/request to your application usually should execute **only one** [transactional operation](https://en.wikipedia.org/wiki/Database_transaction) to save **all** changes (or cancel **all** changes of that command/request in case if something fails). This should be done to maintain consistency. To do that you can wrap database operations in a transaction or use something like [Unit of Work](https://java-design-patterns.com/patterns/unit-of-work/) pattern. Example: [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - notice how it gets a transactional repository from `this.unitOfWork`.
-
 **Note**: `Command` is similar but not the same as described here: [Command Pattern](https://refactoring.guru/design-patterns/command). There are multiple definitions across the internet with similar but slightly different implementations.
 
 To execute a command you can use a `Command Bus` instead of importing a service directly. This will decouple a command Invoker from a Receiver so you can send your commands from anywhere without creating coupling.
@@ -401,7 +399,8 @@ An alternative approach would be publishing a `Domain Event`. If executing a com
 
 Domain Events may be useful for creating an [audit log](https://en.wikipedia.org/wiki/Audit_trail) to track all changes to important entities by saving each event to the database. Read more on why audit logs may be useful: [Why soft deletes are evil and what to do instead](https://jameshalsall.co.uk/posts/why-soft-deletes-are-evil-and-what-to-do-instead).
 
-All changes done by Domain Events (or by anything else) across multiple aggregates in a single process should be saved in a single database transaction to maintain consistency. Wrapping an entire flow in a transaction or using patterns like [Unit of Work](https://java-design-patterns.com/patterns/unit-of-work/) or similar can help with that.
+All changes caused by Domain Events across multiple aggregates in a single process can be saved in a single database [transaction](https://en.wikipedia.org/wiki/Database_transaction). This approach ensures consistency and integrity of your data. Wrapping an entire flow in a transaction or using patterns like [Unit of Work](https://java-design-patterns.com/patterns/unit-of-work/) or similar can help with that.
+**Keep in mind** that abusing transactions can create bottlenecks when multiple users try to modify single record concurrently. Use it only when you can afford it, otherwise go for other approaches (like [eventual consistency](https://en.wikipedia.org/wiki/Eventual_consistency)).
 
 There are multiple ways on implementing an event bus for Domain Events, for example by using ideas from patterns like [Mediator](https://refactoring.guru/design-patterns/mediator) or [Observer](https://refactoring.guru/design-patterns/observer).
 
@@ -411,7 +410,7 @@ Examples:
 - [user-created.domain-event.ts](src/modules/user/domain/events/user-created.domain-event.ts) - simple object that holds data related to published event.
 - [create-wallet-when-user-is-created.domain-event-handler.ts](src/modules/wallet/application/event-handlers/create-wallet-when-user-is-created.domain-event-handler.ts) - this is an example of Domain Event Handler that executes some actions when a domain event is raised (in this case, when user is created it also creates a wallet for that user).
 - [typeorm.repository.base.ts](src/libs/ddd/infrastructure/database/base-classes/typeorm.repository.base.ts) - repository publishes all domain events for execution when it persists changes to an aggregate.
-- [typeorm-unit-of-work.ts](src/libs/ddd/infrastructure/database/base-classes/typeorm-unit-of-work.ts) - this ensures that all changes are saved in a single database transaction. Keep in mind that this is a naive implementation of a Unit of Work as it only wraps execution into a transaction. Proper Unit of Work implementation requires storing all changes in memory first. [Mikro-orm](https://www.npmjs.com/package/mikro-orm) is a nice ORM for nodejs that can be used instead of [typeorm](https://www.npmjs.com/package/typeorm) to have a proper Unit of Work pattern. Read more about [mikro-orm unit of work](https://mikro-orm.io/docs/unit-of-work/).
+- [typeorm-unit-of-work.ts](src/libs/ddd/infrastructure/database/base-classes/typeorm-unit-of-work.ts) - this ensures that all changes are saved in a single database transaction.
 - [unit-of-work.ts](src/infrastructure/database/unit-of-work/unit-of-work.ts) - here you create factories for specific Domain Repositories that are used in a transaction.
 - [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - here we get a user repository from a `UnitOfWork` and execute a transaction.
 
@@ -424,7 +423,7 @@ To have a better understanding on domain events and implementation read this:
 
 - This project uses custom implementation for publishing Domain Events. Reason for not using [Node Event Emitter](https://nodejs.org/api/events.html) or packages that offer an event bus (like [NestJS CQRS](https://docs.nestjs.com/recipes/cqrs)) is that they don't offer an option to `await` for all events to finish, which is useful when making all events a part of a transaction. Inside a single process either all changes done by events should be saved, or none of them in case if one of the events fails.
 
-- Transactions are not required for some operations (for example queries or operations that don't cause any side-effects in other aggregates) so you may skip using a unit of work in this cases and just use a regular repository injected through a constructor instead of a transactional repository.
+- Transactions are not required for some operations (for example queries or operations that don't cause any side-effects in other aggregates) so you may skip using a unit of work in those cases.
 
 - While using only events for complex workflows with a lot of steps it will be hard to track everything that is happening across the application. One event may trigger another one, then another one, and so on. To track the entire workflow you'll have to go multiple places and search for an event handler for each step which is hard to maintain. In this cases using a service/orchestrator/mediator might be a preferred approach than only using events since you will have an entire workflow in one place. This might create some coupling, but is easier to maintain. Don't rely on events only, pick the right tool for the job.
 
