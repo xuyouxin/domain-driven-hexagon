@@ -33,7 +33,12 @@
     - [在应用核心内部使用库(Using libraries inside application's core)](#在应用核心内部使用库(Using libraries inside application's core))
   - [接口适配器(Interface Adapters)](#接口适配器(Interface Adapters))
     - [控制器(Controllers)](#控制器(Controllers))
+      - [Resolvers](#resolvers)
     - [数据传输对象(DTOs)](#数据传输对象(DTOs))
+      - [请求数据传输对象(Request DTOs)](#请求数据传输对象(Request DTOs))
+      - [响应数据传输对象(Response DTOs)](#响应数据传输对象(Response DTOs))
+      - [其他建议(Additional recommendations)](#其他建议(Additional recommendations))
+      - [本地数据传输对象(Local DTOs)](#本地数据传输对象(Local DTOs))
   - [基础设施(Infrastructure)](#基础设施(Infrastructure))
     - [适配器(Adapters)](#适配器(Adapters))
     - [存储库(Repositories)](#存储库(Repositories))
@@ -677,3 +682,129 @@ type ContactInfo = Email | Phone | [Email, Phone];
 - ["Secure by Design" Chapter 4.3: Validation](https://livebook.manning.com/book/secure-by-design/chapter-4/109).
 
 ## 领域错误(Domain Errors)
+
+应用程序核心和领域层不应该抛出 HTTP 异常或状态因为它不应该了解自己在哪个上下文中被使用，因为它可以被任何东西使用：HTTP 控制器、微服务事件处理器，命令行接口等。更好的做法是使用适当的错误代码创建自定义错误类。
+
+异常是针对特殊情况的。复杂的领域通常拥有很错误，这些错误并非异常，而是业务逻辑的一部分（例如“座位已被预订，请选择其他座位”）。这些错误可能需要特殊处理。这种情况下显式返回错误类型会比直接抛出异常更合适。
+
+返回错误而不是显式地抛出异常使你可以知晓一个方法能够返回的每个异常的类型，以便你可以根据情况进行处理。这可以使错误处理和跟踪更简单。
+
+为了帮助解决这个问题，你可以使用某种 Result 对象中的 Success 或 Failure (一种借鉴自函数式编程语言，比如 Haskell 的 `Either` [monad](<https://en.wikipedia.org/wiki/Monad_(functional_programming)>))。和抛出异常不同的是，这种方法允许我们对每种错误定义类型，并强制你显式地处理成功和失败的情况而不是使用 `try/catch`。例如：
+
+```typescript
+if (await userRepo.exists(command.email)) {
+  return Result.err(new UserAlreadyExistsError()); // <- returning an Error
+}
+// else
+const user = await this.userRepo.create(user);
+return Result.ok(user);
+```
+
+[@badrap/result](https://www.npmjs.com/package/@badrap/result) - 如果你想使用 Result 对象，这里有一个不错的 npm 包。
+
+返回错误而不是抛出异常会增加一些样板代码，但它可以使你的应用程序更健壮和安全。
+
+**注意**：请区别领域错误和异常。异常通常会被抛出且没有返回值。如果你返回技术类异常（例如连接失败，进程内存不足等），可能会导致一些安全问题并违反 [快速失败(Fail-fast)](https://en.wikipedia.org/wiki/Fail-fast) 原则。返回一个异常而不是终止程序执行流将允许程序在一个非法状态下继续运行，这可能会导致发生更多的非预期错误，因此在这种情况下最好是抛出异常而不是返回它。
+
+示例文件：
+
+- [user.errors.ts](src/modules/user/errors/user.errors.ts) - 用户错误
+- [create-user.service.ts](src/modules/user/commands/create-user/create-user.service.ts) - 注意如何返回 `Result.err(new UserAlreadyExistsError())` 错误而不是抛出异常。
+- [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) 在 user http 控制器中我们包装一个错误并决定如何处理它。如果错误是 `UserAlreadyExistsError` 就抛出一个 `Conflict Exception` 异常，用户会收到 `409 - Conflict` 响应。如果是未知错误我们就抛出它，NestJS 会返回 `500 - Internal Server Error` 给用户。
+- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) - 在 CLI 控制其中我们不需要返回正确的错误码，因此我们只需要 `.unwrap()` 一个结果，它只会在出现错误时抛出异常。
+- [exceptions](src/libs/exceptions) 这个目录包含了一些通用的应用程序异常（非领域特定的）。
+- [exception.interceptor.ts](src/infrastructure/interceptors/exception.interceptor.ts) - 在这个文件中我们将应用通用异常转换成NestJS HTTP 异常。这样我们就不受框架或 HTTP 协议的束缚。
+
+阅读更多：
+
+- [Flexible Error Handling w/ the Result Class](https://khalilstemmler.com/articles/enterprise-typescript-nodejs/handling-errors-result-class/)
+- [Advanced error handling techniques](https://enterprisecraftsmanship.com/posts/advanced-error-handling-techniques/)
+- ["Secure by Design" Chapter 9.2: Handling failures without exceptions](https://livebook.manning.com/book/secure-by-design/chapter-9/51)
+
+## 在应用核心内部使用库(Using libraries inside application's core)
+
+是否在应用程序核心中尤其是领域层使用库是一个充满争议的话题。在现实世界中，注入每个库而不是直接导入它这种做法并不实用，因此可以为一些有助于实现领域逻辑的单一职责的库（例如处理数字的库）做一些例外处理。
+
+需要谨记的是导入到应用程序核心中的库**不应该**暴露：
+
+- 能够访问任何进程外部资源（HTTP请求，数据库访问等）的功能；
+- 与领域无关的功能（框架，技术细节例如ORMs，Logger等）。
+- 那些带来随机性的功能（生成随机IDs，时间戳等）因为这会使测试结果不可预期（尽管在 TypeScript 世界中这没什么大不了的，因为这可以在不使用 依赖注入 DI 的情况下被测试库模拟）；
+- 如果一个库经常变更或者它本身有很多依赖，那么它很可能不应该被用于领域层。
+
+考虑使用 [适配器(adapter)](https://refactoring.guru/design-patterns/adapter) 或 [门面(facade)](https://refactoring.guru/design-patterns/facade) 模式赖创建一个 `防腐` 层以使用这些库。
+
+我们有时会容忍那些集中使用的库，但请小心那些可能分布在许多领域对象中的通用库。如果需要，替换这些库将很困难。只将一个或少数几个领域对象绑定到一些单一职责库上是没问题的。替换只与一个或少数几个对象绑定的库要比替换那些无处不在的通用库要容易得多。
+
+除了各式各样的库以外，还有框架。框架可能是一个真正的累赘，因为根据定义框架处于一个支配者的地位，并且当你的应用程序与框架粘合在一起时你将很难替换它。在外层（例如基础设施层）中使用框架是个不错的选择，但请记得尽量保持你的领域是干净的。你应该能够提取你的领域层并使用任意其他框架围绕它构筑一个新的基础设施而不会破坏它的业务逻辑。
+
+NestJS 在这方面做得很好，因为它使用了低侵入性的装饰器，因此你可以使用像 `@Inject()` 这种装饰器，而不影响你的业务逻辑，并且在需要时移除或替换它也相对容易。无须完全放弃框架，但请把它们控制在边界之内以防止它们影响你的业务逻辑。
+
+尽可能多地不要让核心承担无关的职责，特别是领域层。此外，尽量减少通用依赖的使用。你的软件中的更多依赖意味着更多潜在错误和安全漏洞。一个使你的软件更健壮的技术手段是减少你的软件的依赖 - 依赖越少，则出错的可能性越小。另一方面，移除所有依赖将会适得其反，自己造轮子的工作量巨大且与那些被广泛使用的依赖库相比可靠性更低。重要的是找到一个好的平衡点，这需要经验。
+
+阅读更多：
+
+- [Referencing external libs](https://khorikov.org/posts/2019-08-07-referencing-external-libs/).
+- [Anti-corruption Layer — An effective Shield](https://medium.com/@malotor/anticorruption-layer-a-effective-shield-caa4d5ba548c)
+
+---
+
+# 接口适配器(Interface Adapters)
+
+接口适配器（也被称为驱动/主适配器）是面向用户的接口，它从用户那里获取输入数据并将其重新打包成一种便于用例（服务/命令处理器）和实体使用的形式。接着它们从这些用例和实体那里获取输出，再从新打包成便于向用户展示的形式。这里的用户可以是一个使用应用程序的人也可以是一台服务器。
+
+包含 `控制器` 和 `请求`/`响应` DTOs （如果需要，还可以包含 `Views`，例如服务端生成的 HTML 模板）。
+ 
+## 控制器(Controllers)
+
+- 控制器是一个面向用户的API，用于解析请求，触发业务逻辑以及将结果呈现给客户端。
+- 每个用例一个控制器被认为是一种好的实践。
+- 在 [NestJS](https://docs.nestjs.com/) 的世界中，控制器可能是一个使用 OpenAPI/Swagger decorators](https://docs.nestjs.com/openapi/operations) 来文档化 API 的好地方。
+
+可以使用每个触发器类型一个控制器来实现更清晰地分离。例如：
+
+- [create-user.http.controller.ts](src/modules/user/commands/create-user/create-user.http.controller.ts) 用于 HTTP 请求 ([NestJS Controllers](https://docs.nestjs.com/controllers))，
+- [create-user.cli.controller.ts](src/modules/user/commands/create-user/create-user.cli.controller.ts) 用于命令行访问 ([NestJS Console](https://www.npmjs.com/package/nestjs-console))
+- [create-user.message.controller.ts](src/modules/user/commands/create-user/create-user.message.controller.ts) 用于外部消息 ([NetJS Microservices](https://docs.nestjs.com/microservices/basics))。
+- 等等。
+
+### Resolvers
+
+如果你正在使用 [GraphQL](https://graphql.org/) 而不是控制器，你将会使用 [Resolvers](https://docs.nestjs.com/graphql/resolvers)。
+
+分层架构的好处一直就是关注点分离。正如你所见，使用 [REST](https://en.wikipedia.org/wiki/Representational_state_transfer) 或者 GraphQL 无关紧要，唯一发生改变的是面向用户的 API 层（接口适配器）。所有的应用程序核心都将保持不变，因为它不依赖于你所使用的技术。
+
+示例文件：
+
+- [create-user.graphql-resolver.ts](src/modules/user/commands/create-user/create-user.graphql-resolver.ts)
+
+---
+
+## 数据传输对象(DTOs)
+
+来自外部应用的数据应该由特殊类型的类表示 - 数据传输对象 (简称[DTO](https://en.wikipedia.org/wiki/Data_transfer_object))。
+数据传输对象是一种在进程间携带数据的对象。它定义了你的 API 和客户端之间的契约。
+
+### 请求数据传输对象(Request DTOs)
+
+用户发送的输入的数据。
+
+- 使用请求数据传输对象提供了一个契约，你的 API 客户端必须遵循该约定才能发出正确的请求。
+
+示例：
+
+- [create-user.request.dto.ts](src/modules/user/commands/create-user/create-user.request.dto.ts)
+- [create.user.interface.ts](src/interface-adapters/interfaces/user/create.user.interface.ts)
+
+### 响应数据传输对象(Response DTOs)
+
+返回给用户的输出数据。
+
+- 使用响应数据传输对象保证了客户端只能收到 DTO 契约中描述的数据，而不是你的模型/实体所拥有的所有数据（这可能导致数据泄露）。
+
+示例：
+
+- [user.response.dto.ts](src/modules/user/dtos/user.response.dto.ts)
+- [user.interface.ts](src/interface-adapters/interfaces/user/user.interface.ts)
+
+---
