@@ -44,37 +44,19 @@
     - [存储库(Repositories)](#存储库(Repositories))
     - [持久化模型(Persistence models)](#持久化模型(Persistence models))
     - [其他可以作为基础设施层一部分的东西(Other things that can be a part of Infrastructure layer)](#其他可以作为基础设施层一部分的东西(Other things that can be a part of Infrastructure layer))
+
+- [其他建议(Other recommendations)](#其他建议(Other recommendations))
   - [对小型APIs的建议(Recommendations for smaller APIs)](#对小型APIs的建议(Recommendations for smaller APIs))
   - [架构、最佳实践、设计模式和原则的通用建议(General recommendations on architectures, best practices, design patterns and principles)](#架构、最佳实践、设计模式和原则的通用建议(General recommendations on architectures, best practices, design patterns and principles))
-
-- [其他建议和最佳实践(Other recommendations and best practices)](#其他建议和最佳实践(Other recommendations and best practices))
-
-  - [异常处理(Exceptions Handling)](#异常处理(Exceptions Handling))
-  - [测试(Testing)](#测试(Testing))
-    - [压力测试(Load Testing)](#压力测试(Load Testing))
-    - [模糊测试(Fuzz Testing)](#模糊测试(Fuzz Testing))
-  - [配置(Configuration)](#配置(Configuration))
-  - [日志(Logging)](#日志(Logging))
-  - [健康监测(Health monitoring)](#健康监测(Health monitoring))
+  - [行为测试(Behavioral Testing)](#行为测试(Behavioral Testing))
   - [目录和文件结构(Folder and File Structure)](#目录和文件结构(Folder and File Structure))
-  - [文件名(File names)](#文件名(File names))
-  - [静态代码分析(Static Code Analysis)](#静态代码分析(Static Code Analysis))
-  - [代码格式化(Code formatting)](#代码格式化(Code formatting))
-  - [文档(Documentation)](#文档(Documentation))
-  - [使应用程序易于设置(Make application easy to setup)](#使应用程序易于设置(Make application easy to setup))
-  - [种子数据(Seeds)](#种子数据(Seeds))
-  - [数据迁移(Migrations)](#数据迁移(Migrations))
-  - [限速(Rate Limiting)](#限速(Rate Limiting))
-  - [代码生成(Code Generation)](#代码生成(Code Generation))
-  - [自定义工具类型(Custom utility types)](#自定义工具类型(Custom utility types))
-  - [预推送/预提交钩子(Pre-push/pre-commit hooks)](#预推送/预提交钩子(Pre-push/pre-commit hooks))
+    - [文件名(File names)](#文件名(File names))
+  - [自定义实用类型(Custom utility types)](#自定义实用类型(Custom utility types))
   - [避免大规模继承链(Prevent massive inheritance chains)](#避免大规模继承链(Prevent massive inheritance chains))
-  - [提交规范(Conventional commits)](#提交规范(Conventional commits))
-
 - [其他资源(Additional resources)](#其他资源(Additional resources))
   - [文章(Articles)](#文章(Articles))
-  - [GitHub仓库(Github Repositories)](#GitHub仓库(Github Repositories))
-  - [文档站点(Documentation websites)](#文档站点(Documentation websites))
+  - [Github仓库(Github Repositories)](#Github仓库(Github Repositories))
+  - [文档站点(Documentation Websites)](#文档站点(Documentation Websites))
   - [博客(Blogs)](#博客(Blogs))
   - [视频(Videos)](#视频(Videos))
   - [书籍(Books)](#书籍(Books))
@@ -808,3 +790,288 @@ NestJS 在这方面做得很好，因为它使用了低侵入性的装饰器，�
 - [user.interface.ts](src/interface-adapters/interfaces/user/user.interface.ts)
 
 ---
+
+使用 DTOs 可以保护你的客户端免受 API 内部数据结构变化的影响。当内部数据模型变化时（例如重命名变量或者拆分表），它们仍然可以被映射以匹配相应的 DTO 来对使用你的 API 的任何人保持兼容性。
+
+当更新 DTO 接口时，可以通过在端点前加上版本号来创建一个新版本的 API，例如：`v2/users`。这将通过防止破坏那些使用你的 API 的更新缓慢的应用程序的兼容性而使升级变得轻松。
+
+你可能已经注意到了 [create-user.command.ts](src/modules/user/commands/create-user/create-user.command.ts) 包含了和 [create-user.request.dto.ts](src/modules/user/commands/create-user/create-user.request.dto.ts) 相同的属性。
+那么为什么我们在已经拥有携带属性的 Command 对象的情况下还需要 DTOs 呢？我们能否只留下其中一个以避免重复？
+
+> 因为命令和 DTOs 是不同的事物，它们处理不同的问题。命令是可序列化的方法调用 - 调用领域模型的方法。然而 DTOs 是数据契约。引入这个带有数据契约的独立层是为 API 客户端提供向后兼容性。如果没有 DTOs，API 将会随着领域模型中的每个修改而被发生重大变化。
+
+阅读更多关于这个主题的内容：[Are CQRS commands part of the domain model?](https://enterprisecraftsmanship.com/posts/cqrs-commands-part-domain-model/) （阅读  "_Commands vs DTOs_" 章节）。
+
+### 其他建议(Additional recommendations)
+
+- DTOs 应该是面向数据的，而不是面向对象的。它的属性应该主要是基本类型的。我们不在此做任何建模工作，只是发送原始数据。
+- 在返回一个`响应`时，使用_白名单_过滤属性要优于使用_黑名单_。这确保了如果程序员忘记将不应返回给用户的新添加属性列入黑名单时不会泄漏敏感数据。
+- `请求/响应`对象的接口应该被存放在某个共享目录中而不是放在模块目录中，因为它们可能会被用于不同的应用程序中（例如前端页面，手机端应用或微服务）。可以考虑为共享接口创建 git submodule 或者独立的包。
+- `请求/响应` DTO 类可能是一个使用数据验证和装饰器的好地方，例如 [class-validator](https://www.npmjs.com/package/class-validator) 和 [class-sanitizer](https://www.npmjs.com/package/class-sanitizer) （请确保首先收集所有的验证错误，然后才将它们返回给用户，这被成为 [通知模式(Notification pattern)](https://martinfowler.com/eaaDev/Notification.html)。Class-validator 默认是这样处理的）。
+- `请求/响应` DTO 类可能还是一个使用 Swagger/OpenAPI 库装饰器的好地方 [NestJS provides](https://docs.nestjs.com/openapi/types-and-parameters)。
+- 如果不使用用于数据验证和文档的 DTO 装饰器，则 DTO 可以只是一个接口而不是类 + 接口。
+- 如果使用 DTO 类，可以使用单独的映射器或在构造函数中将数据转换为 DTO 的格式。
+
+### 本地数据传输对象(Local DTOs)
+
+在某些项目中还可以看到一种叫本地 DTOs 的东西。有些人倾向于在领域之外（例如在控制器中）不使用领域对象（例如实体），而是返回一个普通的 DTO 对象。这种项目由于不使用像接口和数据映射这类技术而避免了额外的复杂性和样板代码。
+
+[这里](https://martinfowler.com/bliki/LocalDTO.html) 是 Martin Fowler 关于本地 DTOs 的一些思考，简短摘录一些：
+
+> 有些人主张将 DTOs 看作是服务层 API 的一部分，因为它们确保了服务层客户端不依赖于底层领域模型。虽然这可能很方便，但我认为这类数据映射没有必要。
+
+当你需要对模块做解耦时可能回想引入本地 DTOs。例如，当在一个模块中查询另一个模块时，你并不想在模块间泄露你的实体。在这种情况下使用本地 DTO 可能是个更好的主意。
+
+---
+
+# 基础设施(Infrastructure)
+
+基础设施负责维护技术细节。你可以在那里找到业务实体的数据库实现、消息代理、I/O组件、依赖注入、框架和任何其他代表架构细节的东西，主要是框架依赖，外部依赖等。
+
+它是最不稳定的层。由于这一层中的事物很可能发生变化，我们让它们尽可能远离更稳定的领域层。因为它们被隔离在领域层之外，因此进行更改和将一个组件替换为另一个组件相对容易。
+
+基础设施层可以包含 `适配器`，数据库相关文件例如 `存储库`、`ORM 实体`/`模式`、框架相关文件等。
+
+## 适配器(Adapters)
+
+- 基础设施层（也被叫作驱动/辅助适配器）允许一个软件系统通过在请求（例如持久化、消息代理、发送Email或消息、请求第三方 API 等）时接收、存储和提供数据来与外部系统交互。
+- 适配器也可以被用来与单个进程中的不同领域交互以避免这些领域之间的耦合。
+- 适配器本质上是端口的实现。它们不应该在代码中的任何位置被直接调用，只能通过端口（接口）调用。
+- 适配器可以被用来作为旧代码的防腐层(ACL)。
+
+阅读更多 ACL 的信息：[防腐层: 如何防止旧代码破坏新系统](https://www.cloudbees.com/blog/anti-corruption-layer-how-keep-legacy-support-breaking-new-systems)
+
+
+适配器应该具有：
+
+- 一个位于应用/领域层的它所实现的`端口`。
+- 一个在数据和领域之间映射的映射器（如果有需要的话）。
+- 一个用于接收数据的 DTO/接口。
+- 一个验证器，以确保传入的数据没有损坏（验证可以在 DTO 类中使用装饰器，或者可以通过“值对象”进行验证）。
+
+## 存储库(Repositories)
+
+存储库是对存在于数据库中的实体集合的抽象。它们集中了通用数据访问功能并封装了访问这些数据所需的的逻辑。实体/聚合可以被存入存储库中并可以在之后被检索且领域无需知道这些数据被保存在何处：数据库中、文件中，或者是其他什么地方。
+
+我们使用存储库将用于访问数据库的础设施或技术细节与领域模型层解耦。
+
+Martin Fowler 这样描述存储库：
+
+> 存储库执行领域模型层和数据映射之间的中介任务，起作用类似于内存中的一组领域对象。客户端对象以声明的方式构建查询并将它们发送给存储库以获取响应。从概念上来说，一个存储库封装了存储在数据库中的一组对象以及可以对它们执行的操作，提供了更接近持久化层的操作。存储库也支持在一个方向上清晰地分离工作领域和数据分配或映射的依赖关系。
+
+这里的数据流看上去像这样：存储库从应用服务中收到一个领域`实体`，它将其映射成数据库的 schema/ORM 格式，执行必要的操作（保存/更新/检索等），然后将它映射会领域`实体`格式并返回给服务。
+
+**请记住**应用程序核心不允许直接依赖于存储库，它应该依赖抽象(端口/接口)。这使得数据检索于技术无关。
+
+示例文件：
+
+本项目包含一个抽象存储库类以执行基本的 CRUD 操作：[typeorm.repository.base.ts](src/libs/ddd/infrastructure/database/base-classes/typeorm.repository.base.ts)。之后这个基础类将被一个具体的存储库类所扩展，实体需要的所有特定的操作都在这个特定的存储库类中实现，例如：[user.repository.ts](src/modules/user/database/user.repository.ts)。
+
+## 持久化模型(Persistence models)
+
+使用单个实体处理领域逻辑和数据库相关事务会导致以数据库为中心的架构。在 DDD 的世界里领域模型和持久化模型应该是分离的。
+
+由于领域`实体`对其数据进行了建模，以便更好地适应领域逻辑，因此它可能不是保存在数据库中的最佳形式。为此目的，可以创建在所使用的特定数据库中具有更好的表示形式的`持久化模型`。领域层不应该知道任何持久化模型的信息，并且它也不应该知道。
+
+可以有多个模型针对不同目的进行优化，例如：
+
+- 具有自己的模型的领域 - `实体`、`聚合`和`值对象`。 
+- 具有自己的模型的持久化层 - ORM ([Object–relational mapping](https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping)), schemas, 读/写模型（如果数据库被分成一个读库和一个写库）([CQRS](https://en.wikipedia.org/wiki/Command%E2%80%93query_separation)) 等。
+
+随着时间的推移，当数据量增加时，可能需要对数据库进行一些更改，例如重新设计表结构甚至是改变使用的数据库来提高性能活泼数据完整性。在没有明确区分`领域`模型和`持久化`模型的情况下，任何对数据库的变更都会导致你的领域`实体`或`聚合`发生变化。例如，在执行一个数据库[规范化(normalization)](https://en.wikipedia.org/wiki/Database_normalization)时，数据可以分布在多个表中而不是一个表，反之，对于[反规范化(denormalization)](https://en.wikipedia.org/wiki/Denormalization)亦然。这可能会迫使团队为此对领域层进行复杂的重构，这可能带来意想不到的bug和挑战。分离领域模型和持久化模型可以阻止上述事情发生。
+
+**注意**：分离领域模型和持久化模型对于较小的应用可能会矫枉过正，请三思而后行。
+
+示例文件：
+
+- [user.orm-entity.ts](src/modules/user/database/user.orm-entity.ts) <- 使用 ORM 的持久化模型。
+- [user.orm-mapper.ts](src/modules/user/database/user.orm-mapper.ts) <- 持久化模型还应该有一个相应的映射器在领域模型和持久化模型之间做转换。
+
+ORM 的替代方式是原始查询或某种查询构建器(例如 [knex](https://www.npmjs.com/package/knex))。对于更大的项目，这可能是比对象-关系映射更好的方法，因为它提供了更大的灵活性和更好的性能。
+
+阅读更多：
+
+- [Stack Overflow question: DDD - Persistence Model and Domain Model](https://stackoverflow.com/questions/14024912/ddd-persistence-model-and-domain-model)
+- [Just Stop It! The Domain Model Is Not The Persistence Model](https://blog.sapiensworks.com/post/2012/04/07/Just-Stop-It!-The-Domain-Model-Is-Not-The-Persistence-Model.aspx)
+- [Comparing SQL, query builders, and ORMs](https://www.prisma.io/dataguide/types/relational/comparing-sql-query-builders-and-orms)
+- [Secure by Design: Chapter 6.2.2 ORM frameworks and no-arg constructors](https://livebook.manning.com/book/secure-by-design/chapter-6/40)
+
+## 其他可以作为基础设施层一部分的东西(Other things that can be a part of Infrastructure layer)
+
+- 框架相关文件；
+- 应用程序日志实现；
+- 基础设置相关的事件([Nest-event](https://www.npmjs.com/package/nest-event))；
+- 定时 cron 作业或任务启动器([NestJS Schedule](https://docs.nestjs.com/techniques/task-scheduling));
+- 其他技术相关文件。
+
+---
+
+# 其他建议(Other recommendations)
+
+## 对小型APIs的建议(Recommendations for smaller APIs)
+
+在业务逻辑较少的中小型项目中实现复杂的架构要小心。部分构建块/模式/原则可能适用，但其他的可能是过度工程。
+
+例如：
+
+- 将代码分成模块/层/用例，适用一些构建块如控制器/服务/实体，划分边界和适用依赖注入等。对于任何项目来说都是一个好主意。
+- 但是诸如为每个原始类型创建一个对象、使用`值对象`来将业务逻辑分成更小的类、将`领域模型”`与`持久化模型`等分开的实践，在那些以数据为中心的且只有很少或几乎没有业务逻辑的项目中，可能只会使此类解决方案复杂化且增加额外的样板代码、数据映射和维护开销，而不会带来太多好处。
+
+[DDD](https://en.wikipedia.org/wiki/Domain-driven_design) 和这里描述的其他实践主要是关于创建具有复杂业务逻辑的软件。但是对于更简单的应用程序来说，有什么更好的方法吗？
+
+对那些业务逻辑不多的应用程序来说，需要考虑其他架构。最流行的可能是 [MVC](https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller)。_模型-视图-控制器_更适用于几乎没有什么业务逻辑的 [CRUD](https://en.wikipedia.org/wiki/Create,_read,_update_and_delete)应用程序，因为它专注于主要是作为数据库视图的软件。
+
+## 架构、最佳实践、设计模式和原则的通用建议(General recommendations on architectures, best practices, design patterns and principles)
+
+不同的项目很可能会有不同的需求。此类项目中的一些原则/模式可以以简化的形式实现，还有一些可以被跳过。遵循 [YAGNI](https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it)原则且不要过度工程。
+
+有时复杂架构和原则例如 [SOLID](https://en.wikipedia.org/wiki/SOLID)可能和[YAGNI](https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it) 以及 [KISS](https://en.wikipedia.org/wiki/KISS_principle)并不兼容。一个优秀的程序员应该是务实的，并且必须能够将他的技能和知识与常识相结合，为问题选择最佳解决方案。
+
+> 在这些建议能为你所用之前，你需要在实际项目中进行面向对象软件开发方面的一些经验。此外，这些建议并不会在你找到好的解决方案和走得太远提示你。走得太远意味着你超出了原则的“范围”，并且没有得到预期的优势。
+> 原则、启发式、“工程法则”就像提示符号，当你知道它们的含义且知道何时你走得太远时，它们很有用。应用它们需要经验，即尝试、失败、分析、与人交谈、再次失败、修复、学习和接着失败。据我所知，没有捷径可走。
+
+**在实现任何模式之前，始终分析使用它带来的好处是否值得我们承担额外的代码复杂性。**
+
+> Effective design argues that we need to know the price of a pattern is worth paying - that's its own skill.
+
+> 有效的设计提倡我们需要了解是否值得支付模式带来的开销 - 
+
+不要仅仅因为书本和文章这么说就盲从实践、模式和架构。有时从头开始重写软件是最好的解决方案，而你将所有你知道的模式和架构风格融入项目中的所有努力都是浪费时间。尝试评估你实施的每个模式的成本和收益并避免过度工程。请记住架构、模式和原则是你在某些情况下有助于你的工具，不是你必须盲目遵循的教条。
+
+然而，请记住：
+
+> 重构过度设计比重构没有设计更容易。
+
+阅读更多：
+
+- [Martin Fowler blog: Yagni](https://martinfowler.com/bliki/Yagni.html)
+- [7 Software Development Principles That Should Be Embraced Daily](https://betterprogramming.pub/7-software-development-principles-that-should-be-embraced-daily-c26a94ec4ecc?gi=3b5b298ddc23)
+- [SOLID Principles and the Arts of Finding the Beach](https://sebastiankuebeck.wordpress.com/2017/09/17/solid-principles-and-the-arts-of-finding-the-beach/)
+
+## 行为测试(Behavioral Testing)
+
+行为测试（或者叫 [BDD](https://en.wikipedia.org/wiki/Behavior-driven_development)）是对程序外部行为的测试，也称为黑盒测试。
+
+具有通用语言的领域驱动设计与行为测试可以很好的结合在一起。
+
+对于 BDD 测试，[Cucumber](https://cucumber.io/) 配合 [Gherkin](https://cucumber.io/docs/gherkin/reference/) 语法可以为你的测试提供结构和语义。这样，即使非开发人员也可以定义测试所需的步骤。在 node.js 中 [jest-cucumber](https://www.npmjs.com/package/jest-cucumber) 是一个不错的选项。
+
+实例文件：
+
+- [create-user.feature](https://github.com/Sairyss/domain-driven-hexagon/blob/master/tests/user/create-user/create-user.feature) - 包含人类可读 Gherkin 步骤的功能文件。
+- [create-user.e2e-spec.ts](https://github.com/Sairyss/domain-driven-hexagon/blob/master/tests/user/create-user/create-user.e2e-spec.ts) - e2e / 行为测试
+
+阅读更多：
+
+- [Backend best practices - Testing](https://github.com/Sairyss/backend-best-practices#testing)
+
+## 目录和文件结构(Folder and File Structure)
+
+因此，当整个应用程序被划分成服务、控制器等时，我们不是用典型的分层方式，而是将所有内容按模块划分。现在，如何在这些模块中处理文件结构？
+
+很多人倾向于做和以前一样的事情：为一个模块创建一个大型的服务/控制器，并在这里维护模块用例的所有逻辑，使这些控制器和服务的代码长达数百行，这会导致文件难以查找并使合并冲突成为代码管理的噩梦。或者是为每种文件类型创建一个目录，例如 `interfaces` 或 `services` 目录，并在其中存储所有彼此无关的接口/服务。这种做法同样会使文件难以查找。每次当你需要修改点什么的时候，你需要在多个目录间跳转来查找相关文件而不是在同一个地方查找它们。
+
+将每个模块按组件分开且将所有相关文件放在一起会更合乎逻辑。例如，查看 [create-user](src/modules/user/commands/create-user) 目录。这个目录包含了大部分与它相关的文件：控制器、服务、命令等。现在如果一个用例更新了，大部分的变更都将在这个单独的组件（目录）中进行，而不会扩散到整个模块的其他地方。
+
+共享文件，例如领域对象（实体/聚合）、存储库、共享 DTOs 和接口等被分开存放，因为它们被多个用例重用。领域层是隔离的，且那些本质上是业务逻辑包装器的用例会被认为是组件。这种方法使文件查找和维护更容易。检查 [user](src/modules/user)模块查看更多例子。
+
+这叫做 [The Common Closure Principle (CCP)](https://ericbackhage.net/clean-code/the-common-closure-principle/)。本项目中的目录/文件结构使用了这个原则。通常一起发生改变的相关文件（并且不被该组件之外的任何其他东西使用）被放到一起，在一个单独的用例目录中。
+
+> 这里的目标应该是战略性的，并且根据经验，我们知道用一个组件中的这些类经常一起变化。
+
+请记住，这个项目中的目录/文件结构只是一个示例，可能并不适合所有人。这里的主要建议是：
+
+- 将你的应用程序划分为模块；
+- 将会同时发生变更的文件放到一起(_Common Closure Principle_);
+- 按行为是否一起改变对文件进行分组，而不是按文件的功能类型；
+- 将那些会被多个组件复用的文件单独存放；
+- 尊重你代码中的边界，将文件放在一起并不意味着内层可以导入外层；
+- [Move files around until it feels right](https://dev.to/dance2die/move-files-around-until-it-feels-right-2lek).
+
+这里有一些不同的方法来处理文件/目录结构，比如明确地将每一层分离到一个相应的目录中。这会更清晰地定义边界但会使文件查找变得困难。请选择更适合项目/个人偏好的方式。
+
+例子：
+
+- [Commands](src/modules/user/commands) 目录包含所有会导致状态变更的用例且每个用例都包含大部分它们需要的东西：控制器、服务、DTO、命令等。
+- [Queries](src/modules/user/queries) 目录和命令目录差不多，但包含了数据检索用例。
+
+阅读更多：
+
+- [Out with the Onion, in with Vertical Slices](https://medium.com/@jacobcunningham/out-with-the-onion-in-with-vertical-slices-c3edfdafe118)
+- [Vertical Slice Architecture](https://jimmybogard.com/vertical-slice-architecture/)
+
+### 文件名(File names)
+
+考虑在命名文件时在点号 "`.`"后使用一个描述性的类型名，例如 `*.service.ts` 或 `*.entity.ts`。这使得区分哪些文件做什么更容易，并且使用 [模糊搜索(fuzzy search)](https://en.wikipedia.org/wiki/Approximate_string_matching) (可以尝试在Windows/Linux 使用 `CTRL+P` ，MacOS 使用 `⌘+P`) 来搜索文件更容易。
+
+阅读更多：
+
+- [Angular Style Guides: Separate file names with dots and dashes](https://angular.io/guide/styleguide#separate-file-names-with-dots-and-dashes).
+
+## 自定义实用类型(Custom utility types)
+
+考虑为不同情况创建一些共享的自定义实用类型。
+
+可以在 [types](src/libs/types) 目录下找到一些例子。
+
+## 避免大规模继承链(Prevent massive inheritance chains)
+
+这可以通过将类设为 `final` 来实现。
+
+**注意**：在 TypeScript 中，和其他语言不同，没有默认方式来声明类是 `final` 的。但可以使用一个自定义装饰器来实现。
+
+示例文件： [final.decorator.ts](src/libs/decorators/final.decorator.ts)
+
+阅读更多：
+
+- [When to declare classes final](https://ocramius.github.io/blog/when-to-declare-classes-final/)
+- [Final classes by default, why?](https://matthiasnoback.nl/2018/09/final-classes-by-default-why/)
+- [Prefer Composition Over Inheritance](https://medium.com/better-programming/prefer-composition-over-inheritance-1602d5149ea1)
+
+---
+
+# 其他资源(Additional resources)
+
+查看这个仓库以获取更多这里使用的最佳实践：[Backend best practices](https://github.com/Sairyss/backend-best-practices)。
+
+## 文章(Articles)
+
+- [DDD, Hexagonal, Onion, Clean, CQRS, … How I put it all together](https://herbertograca.com/2017/11/16/explicit-architecture-01-ddd-hexagonal-onion-clean-cqrs-how-i-put-it-all-together)
+- [Hexagonal Architecture](https://www.qwan.eu/2020/08/20/hexagonal-architecture.html)
+- [Clean architecture series](https://medium.com/@pereiren/clean-architecture-series-part-1-f34ef6b04b62)
+- [Clean architecture for the rest of us](https://pusher.com/tutorials/clean-architecture-introduction)
+- [An illustrated guide to 12 Factor Apps](https://www.redhat.com/architect/12-factor-app)
+
+## Github仓库(Github Repositories)
+
+- [Node.js Best Practices](https://github.com/goldbergyoni/nodebestpractices)
+- [The System Design Primer](https://github.com/donnemartin/system-design-primer)
+
+## 文档站点(Documentation Websites)
+
+- [The Twelve-Factor App](https://12factor.net/)
+- [Refactoring guru - Catalog of Design Patterns](https://refactoring.guru/design-patterns/catalog)
+- [Microsoft - Cloud Design Patterns](https://docs.microsoft.com/en-us/azure/architecture/patterns/index-patterns)
+
+## 博客(Blogs)
+
+- [Vladimir Khorikov](https://enterprisecraftsmanship.com/)
+- [Khalil Stemmler](https://khalilstemmler.com)
+- [Kamil Grzybek](https://www.kamilgrzybek.com/)
+- [Martin Fowler](https://martinfowler.com/)
+- [Herberto Graca](https://herbertograca.com/)
+
+## 视频(Videos)
+
+- [More Testable Code with the Hexagonal Architecture](https://youtu.be/ujb_O6myknY)
+- [Playlist: Design Patterns Video Tutorial](https://youtube.com/playlist?list=PLF206E906175C7E07)
+- [Playlist: Design Patterns in Object Oriented Programming](https://youtube.com/playlist?list=PLrhzvIcii6GNjpARdnO4ueTUAVR9eMBpc)
+- [Herberto Graca - Making architecture explicit](https://www.youtube.com/watch?v=_yoZN9Sb3PM&feature=youtu.be)
+
+## 书籍(Books)
+
+- ["Domain-Driven Design: Tackling Complexity in the Heart of Software"](https://www.amazon.com/Domain-Driven-Design-Tackling-Complexity-Software/dp/0321125215) by Eric Evans
+- ["Secure by Design"](https://www.manning.com/books/secure-by-design) by Dan Bergh Johnsson, Daniel Deogun, Daniel Sawano
+- ["Implementing Domain-Driven Design"](https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon/dp/0321834577) by Vaughn Vernon
+- ["Clean Architecture: A Craftsman's Guide to Software Structure and Design"](https://www.amazon.com/Clean-Architecture-Craftsmans-Software-Structure/dp/0134494164/ref=sr_1_1?dchild=1&keywords=clean+architecture&qid=1605343702&s=books&sr=1-1) by Robert Martin
+- [Designing Data-Intensive Applications: The Big Ideas Behind Reliable, Scalable, and Maintainable Systems](https://www.amazon.com/Designing-Data-Intensive-Applications-Reliable-Maintainable/dp/1449373321) by Martin Kleppmann
