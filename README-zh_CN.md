@@ -16,7 +16,7 @@
 
   - [图解(Diagram)](#图解(Diagram))
   - [模块(Modules)](#模块(Modules))
-  - [应用程序核心(Application Core)](#应用程序核心(Application\ Core))
+  - [应用程序核心(Application Core)](#应用程序核心(Application-Core))
   - [应用层(Application layer)](#应用层(Application layer))
     - [应用服务(Application Services)](#应用服务(Application Services))
     - [命令和查询(Commands and Queries)](#命令和查询(Commands and Queries))
