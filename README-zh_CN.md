@@ -47,7 +47,7 @@
 
 - [其他建议(Other recommendations)](#其他建议(Other-recommendations))
   - [对小型APIs的建议(Recommendations for smaller APIs)](#对小型APIs的建议(Recommendations-for-smaller-APIs))
-  - [架构、最佳实践、设计模式和原则的通用建议(General recommendations on architectures, best practices, design patterns and principles)](#架构、最佳实践、设计模式和原则的通用建议(General-recommendations-on-architectures,-best practices,-design-patterns-and-principles))
+  - [架构、最佳实践、设计模式和原则的通用建议(General recommendations on architectures, best practices, design patterns and principles)](#架构、最佳实践、设计模式和原则的通用建议(General-recommendations-on-architectures,-best-practices,-design-patterns-and-principles))
   - [行为测试(Behavioral Testing)](#行为测试(Behavioral-Testing))
   - [目录和文件结构(Folder and File Structure)](#目录和文件结构(Folder-and-File-Structure))
     - [文件名(File names)](#文件名(File-names))
