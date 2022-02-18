@@ -104,7 +104,7 @@
 - 应用服务处理这个命令/查询(Command/Query)；它使用领域服务和/或实体执行业务逻辑，并通过端口(ports)使用基础设施层。
 - 基础设施层(infrastructure layer)使用映射器(mapper)将数据转换成它需要的形式，使用存储库(repositories)获取/持久化数据，使用适配器(adapters)发送事件或进行其他I/O通信，将数据映射回领域对象的格式并传回应用服务层。
 - 应用服务层处理完成后，它将数据/确认返回给控制器。
-- 控制器将数据返回给用户(如果应用有展示层/试图，则返回给它们)。
+- 控制器将数据返回给用户(如果应用有展示层/视图，则返回给它们)。
 
 每一层负责它自己的逻辑且拥有构建块，这些构建块通常应该在可能且有意义的情况下遵循 [Single-responsibility principle](https://en.wikipedia.org/wiki/Single-responsibility_principle) （比如，只使用`存储库`访问数据库，使用`实体`处理业务逻辑等）。
 
