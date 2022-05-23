@@ -1,0 +1,22 @@
+Clean architecture series: 整洁架构
+  part 1: https://pereiren.medium.com/clean-architecture-series-part-1-f34ef6b04b62
+  part 2: https://pereiren.medium.com/clean-architecture-series-part-2-56197c4b9d58
+
+The Twelve Factors: 12因素编程原则
+  https://12factor.net/
+
+HEXAGONAL ARCHITECTURE: 六边形架构
+  https://www.qwan.eu/2020/08/20/hexagonal-architecture.html
+
+Modular programming: 模块化编程
+  https://www.tiny.cloud/blog/modular-programming-principle/
+
+
+DDD 的实现:
+  wolkenkit:
+    https://github.com/thenativeweb/wolkenkit
+    https://docs.wolkenkit.io/latest/getting-started/understanding-wolkenkit/architecture/
+
+  boostercloud:
+    https://github.com/boostercloud/booster/blob/main/docs/chapters/03_booster-architecture.md
+

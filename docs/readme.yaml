@@ -1,0 +1,194 @@
+data flow:
+  1: Request/CLI command/event is sent to the controller using plain DTO;
+  2: Controller parses this DTO, maps it to a Command/Query object format and passes it to an Application service;
+  3: Application service handles this Command/Query;
+    it executes business logic using domain services and/or entities
+    and uses the infrastructure layer through ports;
+  4: Infrastructure layer uses a mapper to convert data to format that it needs,
+    uses repositories to fetch/persist data and adapters to send events or do other I/O communications,
+    maps data back to domain format and returns it back to Application service;
+  5: After the Application service finishes doing its job, it returns data/confirmation back to Controllers;
+  6: Controllers return data back to the user (if application has presenters/views, those are returned instead).
+
+Application Core:
+  Domain layer: 这层包含了应用程序的业务规则
+    Entities:
+      core: Entities represent business models and express what properties a particular model has,
+        what it can do, when and at what conditions it can do it.
+      features:
+        1: Entities must always protect their invariant
+        2: 包含领域业务逻辑。尽量不要在服务中包含业务逻辑，这会导致 贫血领域模型(Anemic Domain Model)
+        3: Have an identity that defines it and makes it distinguishable from others. Its identity is consistent during its life cycle.
+        4: Equality between two entities is determined by comparing their identificators (usually its id field).
+        5: Know nothing about upper layers (services, controllers etc.).
+        6: 领域实体数据应该被建模以适应业务逻辑，而不是数据库模式。
+        7: 实体应该保护它的有效性，尽量避免使用public setters - 尽量使用方法来更新状态并在需要时在每次更新时执行有效性验证
+          （可以用一个简单的validate()方法来检查业务逻辑没有被更新所破坏）
+        8: Must be consistent on creation.
+           Validate Entities and other domain objects on creation and throw an error on first failure. Fail Fast.
+        9: Avoid no-arg (empty) constructors, accept and validate all required properties in a constructor
+        10: For optional properties that require some complex setting up, Fluent interface and Builder Pattern can be used.
+
+    Aggregates:
+      core: Aggregate is a cluster of domain objects that can be treated as a single unit.
+        It encapsulates entities and value objects which conceptually belong together.
+      features:
+        1: Aggregate root is an entity that contains other entities/value objects and all logic to operate them
+        2: Aggregate root has global identity (UUID / GUID / primary key).
+          Entities inside the aggregate boundary have local identities, unique only within the Aggregate.
+        3: 聚合根是通向整个聚合的入口。来自聚合外部的任何的引用都应该仅到达聚合根。
+        4: 对一个聚合的任何操作都必须是 事务性操作(transactional operations)。要么保存/更新/删除所有内容，要么什么都不做。
+        5: Similar to Entities, aggregates must protect their invariants through entire lifecycle.
+        6: 聚合内的对象可以通过全局唯一标识符(id)引用其他聚合根。请避免直接持有对象引用。(避免循环引用)
+        7: 尽量避免过大的聚合，这可能导致性能和可维护性问题。
+        8: Aggregates can publish Domain Events
+      summary: 所有这些规则都来自_围绕聚合创建边界的想法。边界简化了业务模型。
+        总之，如果你将_多个相关实体和值对象_组合在一个根实体中，则这个根实体就变成了一个聚合根，而这些相关实体和值对象的簇就就变成一个聚合。
+
+    Domain Events:
+      Domain Event indicates that something happened in a domain that you want other parts of the same domain (in-process) to be aware of.
+      Domain events are just messages pushed to an in-memory Domain Event dispatcher.
+
+    Domain Services:
+      Domain services are used for "a significant process or transformation in the domain that is not a natural responsibility of an ENTITY or VALUE OBJECT"
+      features:
+        1: 领域服务是一种特定类型的领域层类，用于执行依赖于两个或更多实体的领域逻辑。
+        2: 当将逻辑放在实体中会破坏它的封装性且需要实体了解它本不应该了解的东西时，我们会将这些逻辑放在领域服务中。
+        3: Domain services are very granular, while application services are a facade purposed with providing an API.
+          (应用服务也许经常变化，Domain services粒度细的话，会更加通用，减少需要做出变化的概率)
+        4: Domain services operate only on types belonging to the Domain.
+          They contain meaningful concepts that can be found within the Ubiquitous Language.
+          They hold operations that don't fit well into Value Objects or Entities.
+
+    Value Objects:
+      Some Attributes and behaviors can be moved out of the entity itself and put into Value Objects.（多一个有意义的抽象，会使整个模型更加清晰易读）
+      features:
+        1: Have no identity. Equality is determined through structural property.
+        2: Are immutable.
+        3: Can be used as an attribute of entities and other value objects.
+        4: Explicitly defines and enforces important constraints (invariants).
+      Notes: 值对象不应仅仅是一个方便的属性分组，而应该在领域模型中_形成一个明确定义的概念。即使它只包含一个属性也是如此。
+        当做为一个概念整体被建模时，它在传递时具有意义，而且它可以维护自身的约束。
+        When modeled as a conceptual whole, it carries meaning when passed around, and it can uphold its constraints.
+        Value object isn’t just a data structure that holds values. It can also encapsulate logic associated with the concept it represents.
+      example:
+        "string 类型的 email ： email: string;   可以使用值对象来表示：email: Email;"
+         现在创建一个 email 的唯一方式就是先创建一个新的 Email 类实例， 这样可以保证在创建时可以验证参数以防止错误值进入实体。
+
+    Make illegal states unrepresentable:
+      Things that can't be validated at compile time (like user input) are validated at runtime.
+      First line of defense is validation of user input DTOs.
+      Second line of defense are Domain Objects. Entities and value objects have to protect their invariants.
+        Having some validation rules here will protect their state from corruption.
+        Enforcing self-validation of your domain objects will inform immediately when data is corrupted.
+        Not validating domain objects allows them to be in an incorrect state, this leads to problems.
+      props: By combining compile and runtime validations, using objects instead of primitives, enforcing self-validation and invariants of your domain objects,
+        you can achieve an architecture where it is hard to end up in illegal states, thus improving security and robustness of your application.
+
+    Domain Errors:
+      应用程序核心和领域层不应该抛出 HTTP 异常或状态因为它不应该了解自己在哪个上下文中被使用，因为它可以被任何东西使用：
+        HTTP controller, Microservice event handler, Command Line Interface etc.
+      A better approach is to create custom error classes with appropriate error codes.
+
+      异常是针对特殊情况的。复杂的领域通常拥有很多种错误，这些错误并非异常，而是业务逻辑的一部分（例如“座位已被预订，请选择其他座位”）。
+        这些错误可能需要特殊处理。这种情况下显式返回错误类型会比直接抛出异常更合适。
+
+      Returning an error instead of throwing explicitly shows a type of each exception that a method can return
+        so you can handle it accordingly. It can make an error handling and tracing easier.
+      返回错误而不是抛出异常会增加一些样板代码，但它可以使你的应用程序更健壮和安全。
+
+      注意：请区别领域错误和异常。异常通常会被抛出且没有返回值。
+        如果你返回技术类异常（例如连接失败，进程内存不足等），可能会导致一些安全问题并违反 快速失败(Fail-fast) 原则。
+        返回一个异常而不是终止程序执行流将允许程序在一个非法状态下继续运行，这可能会导致发生更多的非预期错误，因此在这种情况下最好是抛出异常而不是返回它。
+
+    Using libraries inside Application's core:
+      需要谨记的是导入到应用程序核心中的库不应该暴露:
+        1: 能够访问任何进程外部资源（HTTP请求，数据库访问等）的功能；
+        2: 与领域无关的功能（框架，技术细节例如ORMs，Logger等）
+        3: 如果一个库经常变更或者它本身有很多依赖，那么它很可能不应该被用于领域层。
+      考虑使用 适配器(adapter) 或 门面(facade) 模式赖创建一个 防腐层以使用这些库。
+
+      除了各式各样的库以外，还有框架。框架可能是一个真正的累赘，因为根据定义框架处于一个支配者的地位，并且当你的应用程序与框架粘合在一起时你将很难替换它。
+        在外层（例如基础设施层）中使用框架是个不错的选择，但请记得尽量保持你的领域是干净的。
+        你应该能够提取你的领域层并使用任意其他框架围绕它构筑一个新的基础设施而不会破坏它的业务逻辑。
+
+
+  Application layer:
+    Application Services: 也被称为“工作流服务”，“用例”，“交互者”等。这些服务编排了完成照客户端施加的命令所需的步骤。
+      1: 通常用来编排外部世界如何与你的应用程序交互并执行终端用户所需的任务
+      2: 不包含特定领域的业务逻辑。
+      3: 操作标量类型，将它们转换为领域类型。
+      4-1: 用于通过端口从数据库/外部世界获取领域实体（或其他任何东西）
+      4-2: 使用端口执行其他进程外部通信（比如发出事件、发送email等）。
+      5-1: 在处理一个实体/聚合的情况下，直接执行它们的方法
+      5-2: 在处理多个实体/聚合的情况下，使用一个领域服务来编排它们
+      6: 不应依赖于其他应用服务因为这可能导致问题（比如循环依赖）
+
+    Commands and Queries: 只要有可能，方法应该被分为命令（状态更改操作）和查询（数据检索操作）
+      1: 通过强制使命令和查询分离，代码变得易于理解。一个改变状态，另一个只是检索数据。
+      2: 此外，如果未来某一天有需要，从一开始就遵循 CQS 将有助于将写入和读取模型分离到不同的数据库 (CQRS)
+
+    Ports: 端口是那些业务逻辑所不关心的技术细节的抽象。
+      core: 应用程序核心不应该依赖于框架或直接访问外部资源。
+        任何对进程外的外部调用_或_从远程进程检索资源/数据_都应该通过端口（接口）来进行，
+      how: 在基础设施层的某处_创建实现类并注入到_应用程序核心中(依赖注入(Dependency Injection) 和 依赖反转(Dependency Inversion))。
+      props: 这可以使业务逻辑独立于技术细节，有助于测试，允许我们可以很容易地引入/移除/替换任何外部资源以达到程序模块化和 松耦合(loosely coupled)。
+      detail:
+        1: 端口基本上是一个定义了_应该做什么操作而_不关心怎么做的接口
+        2: 可以创建端来对领域中的I/O操作、技术细节、侵入性库、遗留代码等进行抽象。
+        3: 应该创建能满足领域需求的端口，而不是简单地模仿工具API。
+        4: 模拟(mock)实现可以在测试时传入端口。模拟实现可以使你的测试更快且独立于环境。
+        5: 在设计端口时，请记住，接口隔离原则(Interface segregation principle)。在合理的情况下可以将大型接口拆分为较小的接口，但同样请注意在没有必要时不要过度设计。
+        6: 端口还就可以帮助我们延迟决策。甚至可以在决定使用哪些技术（框架，数据库等）之前设计领域层。
+      注意1: 由于多数端口实现是在应用层中注入并执行的，因此应用层是一个存放这些端口的好地方。
+        但有些时候领域层的业务逻辑依赖于执行某些外部资源，这种情况下端口可以被放在领域层中
+      注意2: 在较小型的应用程序/APIs中创建端口会带来不必要的抽象，这可能会使此类解决方案过于复杂。
+        对于这类应用程序，直接使用具体实现替代端口就足够了。请在使用这个模式之前分析利弊。
+
+
+  Infrastructure:
+    基础设施负责封装技术细节。你可以在那里找到:
+      the implementations of database repositories for storing/retrieving business entities,
+      message brokers to emit messages/events,
+      I/O services to access external resources,
+      framework related code
+      and any other code that represents a replaceable detail for the architecture.
+    它是最不稳定的层。由于这一层中的事物很可能发生变化，我们让它们尽可能远离更稳定的领域层。
+    Because they are kept separate, it's relatively easy to make changes or swap one component for another.
+
+    Adapters:
+      适配器本质上是端口的实现。它们不应该在代码中的任何位置被直接调用，只能通过端口（接口）调用 - 策略模式。
+      适配器可以被用来作为旧代码的防腐层(ACL)。
+
+      Adapters should have:
+        1: a port somewhere in application/domain layer that it implements;
+        2: a mapper that maps data from and to domain (if it's needed);
+        3: a DTO/interface for received data;
+        4: a validator to make sure incoming data is not corrupted
+          (validation can reside in DTO class using decorators, or it can be validated by Value Objects).
+
+    Repositories:
+      Repositories are abstractions over collections of entities that are living in a database.
+      存储库是对_存在于数据库中的实体集合_的抽象。它们集中了_通用数据访问功能_并封装了访问这些数据所需的的逻辑。
+      实体/聚合可以被存入存储库中_并可以在之后被检索_且领域无需知道这些数据被保存在何处：数据库中、文件中，或者是其他什么地方。
+
+    Persistence models:
+      模型分离: Using a single entity for domain logic and database concerns leads to a database-centric architecture.
+        In DDD world domain model and persistance model should be separated.
+        使用单个实体处理领域逻辑和数据库相关事务会导致以数据库为中心的架构。在 DDD 的世界里领域模型和持久化模型应该是分离的。
+
+      Since domain Entities have their data modeled so that it best accommodates domain logic, it may be not in the best shape to save in a database.
+      For that purpose Persistence models can be created that have a shape that is better represented in a particular database that is used.
+      Domain layer should not know anything about persistance models, and it should not care.
+      由于领域实体对其数据进行了建模，以便更好地适应领域逻辑，因此它可能不是保存在数据库中的最佳形式。
+        为此目的，可以创建在所使用的特定数据库中_具有更好的表示形式的持久化模型。领域层不应该知道任何持久化模型的信息，并且它也不应该知道。
+
+      随着时间的推移，当数据量增加时，可能需要对数据库进行一些更改，例如_重新设计表结构_甚至是_改变使用的数据库来提高性能活泼数据完整性。
+      在没有明确区分领域模型和持久化模型的情况下，任何对数据库的变更_都会导致你的领域实体或聚合发生变化。
+
+    Other things that can be a part of Infrastructure layer:
+      1: Framework related files;
+      2: Application logger implementation;
+      3: Infrastructure related events (Nest-event)
+      4: Periodic cron jobs or tasks launchers (NestJS Schedule);
+      5: Other technology related files.
